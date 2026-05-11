@@ -1,0 +1,20 @@
+[package]
+name = "gitplot"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+iced = { version = "=0.13.1", features = ["canvas", "tokio"] }
+plotters = { version = "0.3", default-features = false, features = ["line_series", "chrono"] }
+plotters-iced = "0.11"
+git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2"] }
+tokei = { version = "14", default-features = false }
+rfd = "0.15"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tokio = { version = "1", features = ["sync", "rt"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
