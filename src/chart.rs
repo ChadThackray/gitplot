@@ -12,6 +12,16 @@ const Y_LABEL_AREA: f32 = 70.0;
 const SNAP_THRESHOLD_PX: f32 = 30.0;
 const BALL_RADIUS: i32 = 5;
 
+const BG: RGBColor = RGBColor(0x1f, 0x21, 0x33);
+const GRID_LIGHT: RGBColor = RGBColor(0x2f, 0x33, 0x4d);
+const GRID_BOLD: RGBColor = RGBColor(0x41, 0x48, 0x68);
+const AXIS_TEXT: RGBColor = RGBColor(0x9a, 0xa5, 0xce);
+const LINE: RGBColor = RGBColor(0x7a, 0xa2, 0xf7);
+const TOOLTIP_BG: RGBColor = RGBColor(0x24, 0x28, 0x3b);
+const TOOLTIP_BORDER: RGBColor = RGBColor(0x41, 0x48, 0x68);
+const TOOLTIP_TEXT: RGBColor = RGBColor(0xc0, 0xca, 0xf5);
+const HOVER_RING: RGBColor = RGBColor(0xc0, 0xca, 0xf5);
+
 pub struct LocChart {
     points: Vec<(NaiveDate, u64)>,
 }
@@ -147,6 +157,8 @@ impl Chart<crate::app::Message> for LocChart {
         state: &Self::State,
         root: DrawingArea<DB, Shift>,
     ) {
+        let _ = root.fill(&BG);
+
         if self.points.is_empty() {
             return;
         }
@@ -164,19 +176,22 @@ impl Chart<crate::app::Message> for LocChart {
             Err(_) => return,
         };
 
+        let label_style = ("sans-serif", 13u32).into_font().color(&AXIS_TEXT);
         let _ = chart
             .configure_mesh()
             .x_labels(8)
             .y_labels(6)
-            .light_line_style(RGBColor(230, 230, 230))
-            .bold_line_style(RGBColor(200, 200, 200))
+            .light_line_style(GRID_LIGHT)
+            .bold_line_style(GRID_BOLD)
+            .axis_style(GRID_BOLD)
+            .label_style(label_style)
             .x_label_formatter(&|d| d.format("%Y-%m-%d").to_string())
             .y_label_formatter(&|v| format_count(*v))
             .draw();
 
         let _ = chart.draw_series(LineSeries::new(
             self.points.iter().copied(),
-            ShapeStyle::from(RGBColor(31, 119, 180)).stroke_width(2),
+            ShapeStyle::from(LINE).stroke_width(2),
         ));
 
         let Some(hover) = state else { return };
@@ -189,12 +204,12 @@ impl Chart<crate::app::Message> for LocChart {
         let _ = chart.plotting_area().draw(&Circle::new(
             (hover.date, hover.value),
             BALL_RADIUS,
-            ShapeStyle::from(RGBColor(31, 119, 180)).filled(),
+            ShapeStyle::from(LINE).filled(),
         ));
         let _ = chart.plotting_area().draw(&Circle::new(
             (hover.date, hover.value),
             BALL_RADIUS + 1,
-            ShapeStyle::from(RGBColor(255, 255, 255)).stroke_width(1),
+            ShapeStyle::from(HOVER_RING).stroke_width(1),
         ));
 
         let date_str = hover.date.format("%Y-%m-%d").to_string();
@@ -230,15 +245,14 @@ impl Chart<crate::app::Message> for LocChart {
 
         let _ = root.draw(&plotters::element::Rectangle::new(
             [(tx, ty), (tx + tooltip_w, ty + tooltip_h)],
-            ShapeStyle::from(RGBColor(255, 255, 255)).filled(),
+            ShapeStyle::from(TOOLTIP_BG).filled(),
         ));
         let _ = root.draw(&plotters::element::Rectangle::new(
             [(tx, ty), (tx + tooltip_w, ty + tooltip_h)],
-            ShapeStyle::from(RGBColor(180, 180, 180)).stroke_width(1),
+            ShapeStyle::from(TOOLTIP_BORDER).stroke_width(1),
         ));
 
-        let text_color = RGBColor(30, 30, 30);
-        let text_style = ("sans-serif", 14u32).into_font().color(&text_color);
+        let text_style = ("sans-serif", 14u32).into_font().color(&TOOLTIP_TEXT);
         let _ = root.draw(&plotters::element::Text::new(
             date_str,
             (tx + pad, ty + pad),

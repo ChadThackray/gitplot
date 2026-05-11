@@ -4,7 +4,7 @@ use crate::types::RepoData;
 use chrono::NaiveDate;
 use iced::futures::SinkExt;
 use iced::widget::{button, checkbox, column, container, row, scrollable, text, Space};
-use iced::{Element, Length, Subscription, Task};
+use iced::{Background, Border, Color, Element, Length, Shadow, Subscription, Task, Theme, Vector};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tokio::sync::mpsc::{self, UnboundedSender};
@@ -119,27 +119,46 @@ impl App {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let top = row![
-            button(text("Open repo")).on_press(Message::OpenClicked),
-            Space::with_width(Length::Fixed(12.0)),
-            text(
-                self.current_path
-                    .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "no repo loaded".to_string())
-            ),
-        ]
-        .align_y(iced::Alignment::Center)
-        .spacing(8);
+        let path_label: Element<'_, Message> = match self.current_path.as_ref() {
+            Some(p) => text(p.display().to_string()).size(13).into(),
+            None => text("no repo loaded")
+                .size(13)
+                .style(|t: &Theme| text::Style {
+                    color: Some(t.extended_palette().background.strong.color),
+                })
+                .into(),
+        };
+
+        let top = container(
+            row![
+                button(text("Open repo").size(14))
+                    .padding([8, 16])
+                    .on_press(Message::OpenClicked)
+                    .style(accent_button),
+                Space::with_width(Length::Fixed(14.0)),
+                path_label,
+            ]
+            .align_y(iced::Alignment::Center)
+            .spacing(8),
+        )
+        .padding([12, 20])
+        .width(Length::Fill)
+        .style(top_bar_style);
 
         let status_line: Element<'_, Message> = match &self.status {
-            Status::Idle => text("").into(),
+            Status::Idle => Space::with_height(Length::Fixed(0.0)).into(),
             Status::Loading { processed, total } => {
-                if *total == 0 {
-                    text("Walking history…").into()
+                let msg = if *total == 0 {
+                    "Walking history…".to_string()
                 } else {
-                    text(format!("Walking commits {processed}/{total}")).into()
-                }
+                    format!("Walking commits {processed}/{total}")
+                };
+                text(msg)
+                    .size(12)
+                    .style(|t: &Theme| text::Style {
+                        color: Some(t.extended_palette().background.strong.color),
+                    })
+                    .into()
             }
             Status::Loaded => {
                 let n = self
@@ -147,9 +166,19 @@ impl App {
                     .as_ref()
                     .map(|d| d.snapshots.len())
                     .unwrap_or(0);
-                text(format!("Loaded — {n} day(s)")).into()
+                text(format!("Loaded — {n} day(s)"))
+                    .size(12)
+                    .style(|t: &Theme| text::Style {
+                        color: Some(t.extended_palette().success.base.color),
+                    })
+                    .into()
             }
-            Status::Error(e) => text(format!("Error: {e}")).color(iced::Color::from_rgb(0.85, 0.2, 0.2)).into(),
+            Status::Error(e) => text(format!("Error: {e}"))
+                .size(12)
+                .style(|t: &Theme| text::Style {
+                    color: Some(t.extended_palette().danger.base.color),
+                })
+                .into(),
         };
 
         let body: Element<'_, Message> = match (&self.status, &self.repo_data, &self.chart) {
@@ -159,27 +188,44 @@ impl App {
                     container(sidebar)
                         .width(Length::Fixed(240.0))
                         .height(Length::Fill)
-                        .padding(8),
+                        .padding(16)
+                        .style(card_style),
                     container(chart.view())
                         .width(Length::Fill)
                         .height(Length::Fill)
-                        .padding(8),
+                        .padding(12)
+                        .style(card_style),
                 ]
+                .spacing(12)
                 .into()
             }
-            _ => container(text("Open a git repository to begin."))
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .into(),
+            _ => container(
+                text("Open a git repository to begin.")
+                    .size(16)
+                    .style(|t: &Theme| text::Style {
+                        color: Some(t.extended_palette().background.strong.color),
+                    }),
+            )
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into(),
         };
 
-        column![
-            container(top).padding(8),
-            container(status_line).padding([0, 8]),
-            body,
+        let content = column![
+            top,
+            container(status_line).padding([4, 20]),
+            container(body)
+                .padding([4, 20])
+                .width(Length::Fill)
+                .height(Length::Fill),
         ]
-        .spacing(4)
-        .into()
+        .spacing(0);
+
+        container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(app_background)
+            .into()
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -188,13 +234,21 @@ impl App {
 
     fn sidebar(&self) -> Element<'_, Message> {
         let latest_loc = self.latest_loc_per_extension();
-        let mut col = column![text("File extensions").size(16)].spacing(4);
+        let header = text("File extensions")
+            .size(13)
+            .style(|t: &Theme| text::Style {
+                color: Some(t.extended_palette().background.strong.color),
+            });
+        let mut col = column![header, Space::with_height(Length::Fixed(4.0))].spacing(6);
         for (ext, enabled) in &self.enabled {
             let count = latest_loc.get(ext).copied().unwrap_or(0);
-            let label = format!(".{ext}  ({})", short_count(count));
+            let label = format!(".{ext}   {}", short_count(count));
             let ext_owned = ext.clone();
             col = col.push(
                 checkbox(label, *enabled)
+                    .size(16)
+                    .spacing(8)
+                    .text_size(13)
                     .on_toggle(move |b| Message::ExtensionToggled(ext_owned.clone(), b)),
             );
         }
@@ -238,6 +292,82 @@ impl App {
             }
         }
         out
+    }
+}
+
+fn app_background(theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(theme.extended_palette().background.base.color)),
+        ..container::Style::default()
+    }
+}
+
+fn top_bar_style(theme: &Theme) -> container::Style {
+    let palette = theme.extended_palette();
+    container::Style {
+        background: Some(Background::Color(mix(
+            palette.background.base.color,
+            palette.background.weak.color,
+            0.5,
+        ))),
+        border: Border {
+            color: palette.background.weak.color,
+            width: 1.0,
+            radius: 0.0.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
+fn card_style(theme: &Theme) -> container::Style {
+    let palette = theme.extended_palette();
+    container::Style {
+        background: Some(Background::Color(mix(
+            palette.background.base.color,
+            palette.background.weak.color,
+            0.4,
+        ))),
+        border: Border {
+            color: palette.background.weak.color,
+            width: 1.0,
+            radius: 10.0.into(),
+        },
+        shadow: Shadow {
+            color: Color { r: 0.0, g: 0.0, b: 0.0, a: 0.25 },
+            offset: Vector::new(0.0, 2.0),
+            blur_radius: 8.0,
+        },
+        ..container::Style::default()
+    }
+}
+
+fn accent_button(theme: &Theme, status: button::Status) -> button::Style {
+    let palette = theme.extended_palette();
+    let (bg, fg) = match status {
+        button::Status::Active => (palette.primary.base.color, palette.primary.base.text),
+        button::Status::Hovered => (palette.primary.strong.color, palette.primary.strong.text),
+        button::Status::Pressed => (palette.primary.weak.color, palette.primary.weak.text),
+        button::Status::Disabled => (palette.background.weak.color, palette.background.strong.color),
+    };
+    button::Style {
+        background: Some(Background::Color(bg)),
+        text_color: fg,
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: 8.0.into(),
+        },
+        shadow: Shadow::default(),
+    }
+}
+
+fn mix(a: Color, b: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    Color {
+        r: a.r * (1.0 - t) + b.r * t,
+        g: a.g * (1.0 - t) + b.g * t,
+        b: a.b * (1.0 - t) + b.b * t,
+        a: a.a * (1.0 - t) + b.a * t,
     }
 }
 
