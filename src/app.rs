@@ -3,7 +3,7 @@ use crate::git_walk::{self, WalkMessage};
 use crate::types::RepoData;
 use chrono::NaiveDate;
 use iced::futures::SinkExt;
-use iced::widget::{button, checkbox, column, container, row, scrollable, text, Space};
+use iced::widget::{button, checkbox, column, container, progress_bar, row, scrollable, text, Space};
 use iced::{Background, Border, Color, Element, Length, Shadow, Subscription, Task, Theme, Vector};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -178,20 +178,7 @@ impl App {
         .style(top_bar_style);
 
         let status_line: Element<'_, Message> = match &self.status {
-            Status::Idle => Space::with_height(Length::Fixed(0.0)).into(),
-            Status::Loading { processed, total } => {
-                let msg = if *total == 0 {
-                    "Walking history…".to_string()
-                } else {
-                    format!("Walking commits {processed}/{total}")
-                };
-                text(msg)
-                    .size(12)
-                    .style(|t: &Theme| text::Style {
-                        color: Some(t.extended_palette().background.strong.color),
-                    })
-                    .into()
-            }
+            Status::Idle | Status::Loading { .. } => Space::with_height(Length::Fixed(0.0)).into(),
             Status::Loaded => {
                 let n = self
                     .repo_data
@@ -236,6 +223,50 @@ impl App {
                     );
                 }
                 body_row.push(chart_card).into()
+            }
+            (Status::Loading { processed, total }, _, _) => {
+                let (label_msg, fraction, pct_label): (String, f32, Option<String>) = if *total == 0
+                {
+                    ("Walking history…".to_string(), 0.0, None)
+                } else {
+                    let frac = *processed as f32 / *total as f32;
+                    let pct = (frac * 100.0).round() as u32;
+                    (
+                        format!("Walking commits {processed}/{total}"),
+                        frac,
+                        Some(format!("{pct}%")),
+                    )
+                };
+
+                let label = text(label_msg).size(14).style(|t: &Theme| text::Style {
+                    color: Some(t.extended_palette().background.strong.color),
+                });
+
+                let bar = progress_bar(0.0..=1.0, fraction)
+                    .width(Length::Fixed(360.0))
+                    .height(Length::Fixed(8.0));
+
+                let mut loading_col = column![
+                    label,
+                    Space::with_height(Length::Fixed(10.0)),
+                    bar,
+                ]
+                .align_x(iced::Alignment::Center)
+                .spacing(0);
+
+                if let Some(pct) = pct_label {
+                    loading_col = loading_col.push(Space::with_height(Length::Fixed(8.0)));
+                    loading_col = loading_col.push(
+                        text(pct).size(12).style(|t: &Theme| text::Style {
+                            color: Some(t.extended_palette().background.strong.color),
+                        }),
+                    );
+                }
+
+                container(loading_col)
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill)
+                    .into()
             }
             _ => container(
                 text("Open a git repository to begin.")
