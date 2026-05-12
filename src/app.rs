@@ -232,7 +232,7 @@ impl App {
                     let frac = *processed as f32 / *total as f32;
                     let pct = (frac * 100.0).round() as u32;
                     (
-                        format!("Walking commits {processed}/{total}"),
+                        format!("Walking history — {processed}/{total} files"),
                         frac,
                         Some(format!("{pct}%")),
                     )

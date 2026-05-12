@@ -4,6 +4,14 @@ use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 fn main() {
+    // Match the GUI's rayon sizing so benchmarks reflect real-world wall time.
+    if std::env::var_os("RAYON_NUM_THREADS").is_none() {
+        let cores = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(2);
+        let rayon_threads = (cores / 4).clamp(1, 8);
+        std::env::set_var("RAYON_NUM_THREADS", rayon_threads.to_string());
+    }
     let path = PathBuf::from(
         std::env::args()
             .nth(1)

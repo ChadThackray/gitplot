@@ -1,12 +1,17 @@
 use gitplot::app::App;
 
 fn main() -> iced::Result {
-    // tokei (transitively) parallelises parse_from_slice via rayon. On the
-    // small per-blob buffers we feed it, the coordination overhead dwarfs
-    // the parsing itself — capping rayon to one thread roughly halves wall
-    // time. Set before any thread is spawned so rayon picks it up.
+    // Tune rayon's global pool. Our git_walk phase-2 already spawns one
+    // OS thread per core; tokei then fans out internally on rayon. A
+    // default rayon pool (= nproc) plus our nproc workers creates 2×nproc
+    // threads on nproc cores → coordination thrash. A small rayon pool
+    // (~nproc/4, max 8) is the sweet spot on the test workloads.
     if std::env::var_os("RAYON_NUM_THREADS").is_none() {
-        std::env::set_var("RAYON_NUM_THREADS", "1");
+        let cores = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(2);
+        let rayon_threads = (cores / 4).clamp(1, 8);
+        std::env::set_var("RAYON_NUM_THREADS", rayon_threads.to_string());
     }
 
     iced::application(App::title, App::update, App::view)
