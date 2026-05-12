@@ -18,6 +18,8 @@ pub enum Message {
     WalkDone(Box<RepoData>),
     WalkFailed(String),
     ExtensionToggled(String, bool),
+    SelectAllExtensions,
+    DeselectAllExtensions,
 }
 
 #[derive(Debug)]
@@ -112,6 +114,20 @@ impl App {
             }
             Message::ExtensionToggled(ext, on) => {
                 self.enabled.insert(ext, on);
+                self.rebuild_chart();
+                Task::none()
+            }
+            Message::SelectAllExtensions => {
+                for v in self.enabled.values_mut() {
+                    *v = true;
+                }
+                self.rebuild_chart();
+                Task::none()
+            }
+            Message::DeselectAllExtensions => {
+                for v in self.enabled.values_mut() {
+                    *v = false;
+                }
                 self.rebuild_chart();
                 Task::none()
             }
@@ -239,7 +255,24 @@ impl App {
             .style(|t: &Theme| text::Style {
                 color: Some(t.extended_palette().background.strong.color),
             });
-        let mut col = column![header, Space::with_height(Length::Fixed(4.0))].spacing(6);
+        let bulk_actions = row![
+            button(text("All").size(12))
+                .padding([4, 10])
+                .on_press(Message::SelectAllExtensions)
+                .style(subtle_button),
+            button(text("None").size(12))
+                .padding([4, 10])
+                .on_press(Message::DeselectAllExtensions)
+                .style(subtle_button),
+        ]
+        .spacing(6);
+        let mut col = column![
+            header,
+            Space::with_height(Length::Fixed(4.0)),
+            bulk_actions,
+            Space::with_height(Length::Fixed(4.0)),
+        ]
+        .spacing(6);
         for (ext, enabled) in &self.enabled {
             let count = latest_loc.get(ext).copied().unwrap_or(0);
             let label = format!(".{ext}   {}", short_count(count));
@@ -347,6 +380,29 @@ fn accent_button(theme: &Theme, status: button::Status) -> button::Style {
         button::Status::Active => (palette.primary.base.color, palette.primary.base.text),
         button::Status::Hovered => (palette.primary.strong.color, palette.primary.strong.text),
         button::Status::Pressed => (palette.primary.weak.color, palette.primary.weak.text),
+        button::Status::Disabled => (palette.background.weak.color, palette.background.strong.color),
+    };
+    button::Style {
+        background: Some(Background::Color(bg)),
+        text_color: fg,
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: 8.0.into(),
+        },
+        shadow: Shadow::default(),
+    }
+}
+
+fn subtle_button(theme: &Theme, status: button::Status) -> button::Style {
+    let palette = theme.extended_palette();
+    let (bg, fg) = match status {
+        button::Status::Active => (palette.background.weak.color, palette.background.base.text),
+        button::Status::Hovered => (
+            mix(palette.background.weak.color, palette.background.strong.color, 0.4),
+            palette.background.base.text,
+        ),
+        button::Status::Pressed => (palette.background.strong.color, palette.background.base.text),
         button::Status::Disabled => (palette.background.weak.color, palette.background.strong.color),
     };
     button::Style {
