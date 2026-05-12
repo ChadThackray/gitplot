@@ -1,4 +1,4 @@
-use crate::chart::TimeSeriesChart;
+use crate::chart::{ChartPalette, TimeSeriesChart};
 use crate::git_walk::{self, WalkMessage};
 use crate::types::RepoData;
 use chrono::NaiveDate;
@@ -21,6 +21,7 @@ pub enum Message {
     SelectAllExtensions,
     DeselectAllExtensions,
     ViewSelected(ViewKind),
+    ThemeToggled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,10 +46,15 @@ pub struct App {
     worker_tx: Option<UnboundedSender<PathBuf>>,
     chart: Option<TimeSeriesChart>,
     view: ViewKind,
+    theme: Theme,
 }
 
 impl Default for App {
     fn default() -> Self {
+        let theme = match dark_light::detect() {
+            Ok(dark_light::Mode::Light) => Theme::TokyoNightLight,
+            _ => Theme::TokyoNight,
+        };
         Self {
             status: Status::Idle,
             current_path: None,
@@ -57,6 +63,7 @@ impl Default for App {
             worker_tx: None,
             chart: None,
             view: ViewKind::Loc,
+            theme,
         }
     }
 }
@@ -67,6 +74,10 @@ impl App {
             Some(p) => format!("gitplot — {}", p.display()),
             None => "gitplot".to_string(),
         }
+    }
+
+    pub fn theme(&self) -> Theme {
+        self.theme.clone()
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -147,6 +158,15 @@ impl App {
                 }
                 Task::none()
             }
+            Message::ThemeToggled => {
+                self.theme = if matches!(self.theme, Theme::TokyoNightLight) {
+                    Theme::TokyoNight
+                } else {
+                    Theme::TokyoNightLight
+                };
+                self.rebuild_chart();
+                Task::none()
+            }
         }
     }
 
@@ -161,6 +181,13 @@ impl App {
                 .into(),
         };
 
+        let is_light = matches!(self.theme, Theme::TokyoNightLight);
+        let theme_glyph = if is_light { "\u{263E}" } else { "\u{2600}" };
+        let theme_toggle = button(text(theme_glyph).size(16))
+            .padding([6, 10])
+            .on_press(Message::ThemeToggled)
+            .style(subtle_button);
+
         let top = container(
             row![
                 button(text("Open repo").size(14))
@@ -169,6 +196,8 @@ impl App {
                     .style(accent_button),
                 Space::with_width(Length::Fixed(14.0)),
                 path_label,
+                Space::with_width(Length::Fill),
+                theme_toggle,
             ]
             .align_y(iced::Alignment::Center)
             .spacing(8),
@@ -349,7 +378,8 @@ impl App {
         self.chart = if points.is_empty() {
             None
         } else {
-            Some(TimeSeriesChart::new(points, unit_label))
+            let palette = ChartPalette::from_theme(&self.theme);
+            Some(TimeSeriesChart::new(points, unit_label, palette))
         };
     }
 

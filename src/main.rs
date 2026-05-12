@@ -16,7 +16,7 @@ fn main() -> iced::Result {
 
     iced::application(App::title, App::update, App::view)
         .subscription(App::subscription)
-        .theme(|_| iced::Theme::TokyoNight)
+        .theme(|app: &App| app.theme())
         .window_size(iced::Size::new(1100.0, 720.0))
         .run_with(|| (App::default(), iced::Task::none()))
 }

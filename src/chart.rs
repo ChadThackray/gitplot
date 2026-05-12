@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use iced::event::Status;
 use iced::widget::canvas::Event;
-use iced::{mouse, Element, Length, Rectangle};
+use iced::{mouse, Color, Element, Length, Rectangle, Theme};
 use plotters::coord::Shift;
 use plotters::prelude::*;
 use plotters_iced::{Chart, ChartWidget};
@@ -12,19 +12,59 @@ const Y_LABEL_AREA: f32 = 70.0;
 const SNAP_THRESHOLD_PX: f32 = 30.0;
 const BALL_RADIUS: i32 = 5;
 
-const BG: RGBColor = RGBColor(0x1f, 0x21, 0x33);
-const GRID_LIGHT: RGBColor = RGBColor(0x2f, 0x33, 0x4d);
-const GRID_BOLD: RGBColor = RGBColor(0x41, 0x48, 0x68);
-const AXIS_TEXT: RGBColor = RGBColor(0x9a, 0xa5, 0xce);
-const LINE: RGBColor = RGBColor(0x7a, 0xa2, 0xf7);
-const TOOLTIP_BG: RGBColor = RGBColor(0x24, 0x28, 0x3b);
-const TOOLTIP_BORDER: RGBColor = RGBColor(0x41, 0x48, 0x68);
-const TOOLTIP_TEXT: RGBColor = RGBColor(0xc0, 0xca, 0xf5);
-const HOVER_RING: RGBColor = RGBColor(0xc0, 0xca, 0xf5);
+#[derive(Debug, Clone, Copy)]
+pub struct ChartPalette {
+    pub bg: RGBColor,
+    pub grid_light: RGBColor,
+    pub grid_bold: RGBColor,
+    pub axis_text: RGBColor,
+    pub line: RGBColor,
+    pub tooltip_bg: RGBColor,
+    pub tooltip_border: RGBColor,
+    pub tooltip_text: RGBColor,
+    pub hover_ring: RGBColor,
+}
+
+impl ChartPalette {
+    pub fn from_theme(theme: &Theme) -> Self {
+        let p = theme.extended_palette();
+        Self {
+            bg: to_rgb(p.background.base.color),
+            grid_light: to_rgb(p.background.weak.color),
+            grid_bold: to_rgb(p.background.strong.color),
+            axis_text: to_rgb(p.background.strong.text),
+            line: to_rgb(p.primary.base.color),
+            tooltip_bg: to_rgb(mix(
+                p.background.base.color,
+                p.background.weak.color,
+                0.5,
+            )),
+            tooltip_border: to_rgb(p.background.strong.color),
+            tooltip_text: to_rgb(p.background.base.text),
+            hover_ring: to_rgb(p.primary.strong.color),
+        }
+    }
+}
+
+fn to_rgb(c: Color) -> RGBColor {
+    let chan = |v: f32| (v * 255.0).round().clamp(0.0, 255.0) as u8;
+    RGBColor(chan(c.r), chan(c.g), chan(c.b))
+}
+
+fn mix(a: Color, b: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    Color {
+        r: a.r * (1.0 - t) + b.r * t,
+        g: a.g * (1.0 - t) + b.g * t,
+        b: a.b * (1.0 - t) + b.b * t,
+        a: a.a * (1.0 - t) + b.a * t,
+    }
+}
 
 pub struct TimeSeriesChart {
     points: Vec<(NaiveDate, u64)>,
     unit_label: &'static str,
+    palette: ChartPalette,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,8 +77,12 @@ pub struct HoverInfo {
 }
 
 impl TimeSeriesChart {
-    pub fn new(points: Vec<(NaiveDate, u64)>, unit_label: &'static str) -> Self {
-        Self { points, unit_label }
+    pub fn new(
+        points: Vec<(NaiveDate, u64)>,
+        unit_label: &'static str,
+        palette: ChartPalette,
+    ) -> Self {
+        Self { points, unit_label, palette }
     }
 
     pub fn view(&self) -> Element<'_, crate::app::Message> {
@@ -158,7 +202,7 @@ impl Chart<crate::app::Message> for TimeSeriesChart {
         state: &Self::State,
         root: DrawingArea<DB, Shift>,
     ) {
-        let _ = root.fill(&BG);
+        let _ = root.fill(&self.palette.bg);
 
         if self.points.is_empty() {
             return;
@@ -177,14 +221,14 @@ impl Chart<crate::app::Message> for TimeSeriesChart {
             Err(_) => return,
         };
 
-        let label_style = ("sans-serif", 13u32).into_font().color(&AXIS_TEXT);
+        let label_style = ("sans-serif", 13u32).into_font().color(&self.palette.axis_text);
         let _ = chart
             .configure_mesh()
             .x_labels(8)
             .y_labels(6)
-            .light_line_style(GRID_LIGHT)
-            .bold_line_style(GRID_BOLD)
-            .axis_style(GRID_BOLD)
+            .light_line_style(self.palette.grid_light)
+            .bold_line_style(self.palette.grid_bold)
+            .axis_style(self.palette.grid_bold)
             .label_style(label_style)
             .x_label_formatter(&|d| d.format("%Y-%m-%d").to_string())
             .y_label_formatter(&|v| format_count(*v))
@@ -192,7 +236,7 @@ impl Chart<crate::app::Message> for TimeSeriesChart {
 
         let _ = chart.draw_series(LineSeries::new(
             self.points.iter().copied(),
-            ShapeStyle::from(LINE).stroke_width(2),
+            ShapeStyle::from(self.palette.line).stroke_width(2),
         ));
 
         let Some(hover) = state else { return };
@@ -205,12 +249,12 @@ impl Chart<crate::app::Message> for TimeSeriesChart {
         let _ = chart.plotting_area().draw(&Circle::new(
             (hover.date, hover.value),
             BALL_RADIUS,
-            ShapeStyle::from(LINE).filled(),
+            ShapeStyle::from(self.palette.line).filled(),
         ));
         let _ = chart.plotting_area().draw(&Circle::new(
             (hover.date, hover.value),
             BALL_RADIUS + 1,
-            ShapeStyle::from(HOVER_RING).stroke_width(1),
+            ShapeStyle::from(self.palette.hover_ring).stroke_width(1),
         ));
 
         let date_str = hover.date.format("%Y-%m-%d").to_string();
@@ -246,14 +290,14 @@ impl Chart<crate::app::Message> for TimeSeriesChart {
 
         let _ = root.draw(&plotters::element::Rectangle::new(
             [(tx, ty), (tx + tooltip_w, ty + tooltip_h)],
-            ShapeStyle::from(TOOLTIP_BG).filled(),
+            ShapeStyle::from(self.palette.tooltip_bg).filled(),
         ));
         let _ = root.draw(&plotters::element::Rectangle::new(
             [(tx, ty), (tx + tooltip_w, ty + tooltip_h)],
-            ShapeStyle::from(TOOLTIP_BORDER).stroke_width(1),
+            ShapeStyle::from(self.palette.tooltip_border).stroke_width(1),
         ));
 
-        let text_style = ("sans-serif", 14u32).into_font().color(&TOOLTIP_TEXT);
+        let text_style = ("sans-serif", 14u32).into_font().color(&self.palette.tooltip_text);
         let _ = root.draw(&plotters::element::Text::new(
             date_str,
             (tx + pad, ty + pad),
