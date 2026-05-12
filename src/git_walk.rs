@@ -44,6 +44,7 @@ fn analyze_inner(path: PathBuf, tx: &UnboundedSender<WalkMessage>) -> Result<Rep
     };
 
     let mut last_per_day: BTreeMap<NaiveDate, (i64, Oid)> = BTreeMap::new();
+    let mut commits_count: BTreeMap<NaiveDate, u32> = BTreeMap::new();
     {
         let mut walk = repo.revwalk().map_err(|e| e.to_string())?;
         walk.set_sorting(Sort::TIME).map_err(|e| e.to_string())?;
@@ -53,6 +54,7 @@ fn analyze_inner(path: PathBuf, tx: &UnboundedSender<WalkMessage>) -> Result<Rep
             let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
             let secs = commit.time().seconds();
             let date = local_date(secs);
+            *commits_count.entry(date).or_insert(0) += 1;
             last_per_day
                 .entry(date)
                 .and_modify(|cur| {
@@ -64,6 +66,8 @@ fn analyze_inner(path: PathBuf, tx: &UnboundedSender<WalkMessage>) -> Result<Rep
         }
     }
 
+    let commits_per_day: Vec<(NaiveDate, u32)> = commits_count.into_iter().collect();
+
     let chosen: Vec<(NaiveDate, Oid)> = last_per_day
         .into_iter()
         .map(|(d, (_t, oid))| (d, oid))
@@ -74,6 +78,7 @@ fn analyze_inner(path: PathBuf, tx: &UnboundedSender<WalkMessage>) -> Result<Rep
         return Ok(RepoData {
             snapshots: Vec::new(),
             all_extensions: BTreeSet::new(),
+            commits_per_day,
         });
     }
     // Workers open their own Repository handles; drop this one so we don't
@@ -162,6 +167,7 @@ fn analyze_inner(path: PathBuf, tx: &UnboundedSender<WalkMessage>) -> Result<Rep
     Ok(RepoData {
         snapshots,
         all_extensions,
+        commits_per_day,
     })
 }
 

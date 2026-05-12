@@ -17,4 +17,5 @@ pub struct DailySnapshot {
 pub struct RepoData {
     pub snapshots: Vec<DailySnapshot>,
     pub all_extensions: BTreeSet<String>,
+    pub commits_per_day: Vec<(NaiveDate, u32)>,
 }

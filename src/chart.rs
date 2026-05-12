@@ -22,8 +22,9 @@ const TOOLTIP_BORDER: RGBColor = RGBColor(0x41, 0x48, 0x68);
 const TOOLTIP_TEXT: RGBColor = RGBColor(0xc0, 0xca, 0xf5);
 const HOVER_RING: RGBColor = RGBColor(0xc0, 0xca, 0xf5);
 
-pub struct LocChart {
+pub struct TimeSeriesChart {
     points: Vec<(NaiveDate, u64)>,
+    unit_label: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,9 +36,9 @@ pub struct HoverInfo {
     pixel_y: i32,
 }
 
-impl LocChart {
-    pub fn new(points: Vec<(NaiveDate, u64)>) -> Self {
-        Self { points }
+impl TimeSeriesChart {
+    pub fn new(points: Vec<(NaiveDate, u64)>, unit_label: &'static str) -> Self {
+        Self { points, unit_label }
     }
 
     pub fn view(&self) -> Element<'_, crate::app::Message> {
@@ -142,7 +143,7 @@ impl LocChart {
     }
 }
 
-impl Chart<crate::app::Message> for LocChart {
+impl Chart<crate::app::Message> for TimeSeriesChart {
     type State = Option<HoverInfo>;
 
     fn build_chart<DB: DrawingBackend>(
@@ -213,7 +214,7 @@ impl Chart<crate::app::Message> for LocChart {
         ));
 
         let date_str = hover.date.format("%Y-%m-%d").to_string();
-        let value_str = format!("{} LOC", format_count(hover.value));
+        let value_str = format!("{} {}", format_count(hover.value), self.unit_label);
         let max_chars = date_str.len().max(value_str.len()) as i32;
         let tooltip_w = max_chars * 8 + 16;
         let tooltip_h = 40i32;

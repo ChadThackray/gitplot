@@ -1,4 +1,4 @@
-use crate::chart::LocChart;
+use crate::chart::TimeSeriesChart;
 use crate::git_walk::{self, WalkMessage};
 use crate::types::RepoData;
 use chrono::NaiveDate;
@@ -20,6 +20,13 @@ pub enum Message {
     ExtensionToggled(String, bool),
     SelectAllExtensions,
     DeselectAllExtensions,
+    ViewSelected(ViewKind),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewKind {
+    Loc,
+    Commits,
 }
 
 #[derive(Debug)]
@@ -36,7 +43,8 @@ pub struct App {
     repo_data: Option<RepoData>,
     enabled: BTreeMap<String, bool>,
     worker_tx: Option<UnboundedSender<PathBuf>>,
-    chart: Option<LocChart>,
+    chart: Option<TimeSeriesChart>,
+    view: ViewKind,
 }
 
 impl Default for App {
@@ -48,6 +56,7 @@ impl Default for App {
             enabled: BTreeMap::new(),
             worker_tx: None,
             chart: None,
+            view: ViewKind::Loc,
         }
     }
 }
@@ -131,6 +140,13 @@ impl App {
                 self.rebuild_chart();
                 Task::none()
             }
+            Message::ViewSelected(view) => {
+                if self.view != view {
+                    self.view = view;
+                    self.rebuild_chart();
+                }
+                Task::none()
+            }
         }
     }
 
@@ -199,21 +215,27 @@ impl App {
 
         let body: Element<'_, Message> = match (&self.status, &self.repo_data, &self.chart) {
             (Status::Loaded, Some(_), Some(chart)) => {
-                let sidebar = self.sidebar();
-                row![
-                    container(sidebar)
-                        .width(Length::Fixed(240.0))
-                        .height(Length::Fill)
-                        .padding(16)
-                        .style(card_style),
-                    container(chart.view())
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .padding(12)
-                        .style(card_style),
-                ]
-                .spacing(12)
-                .into()
+                let nav = container(self.nav_rail())
+                    .width(Length::Fixed(160.0))
+                    .height(Length::Fill)
+                    .padding(12)
+                    .style(card_style);
+                let chart_card = container(chart.view())
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .padding(12)
+                    .style(card_style);
+                let mut body_row = row![nav].spacing(12);
+                if self.view == ViewKind::Loc {
+                    body_row = body_row.push(
+                        container(self.sidebar())
+                            .width(Length::Fixed(240.0))
+                            .height(Length::Fill)
+                            .padding(16)
+                            .style(card_style),
+                    );
+                }
+                body_row.push(chart_card).into()
             }
             _ => container(
                 text("Open a git repository to begin.")
@@ -289,15 +311,18 @@ impl App {
     }
 
     fn rebuild_chart(&mut self) {
-        let points = self.chart_points();
+        let (points, unit_label) = match self.view {
+            ViewKind::Loc => (self.loc_chart_points(), "LOC"),
+            ViewKind::Commits => (self.commits_chart_points(), "commits"),
+        };
         self.chart = if points.is_empty() {
             None
         } else {
-            Some(LocChart::new(points))
+            Some(TimeSeriesChart::new(points, unit_label))
         };
     }
 
-    fn chart_points(&self) -> Vec<(NaiveDate, u64)> {
+    fn loc_chart_points(&self) -> Vec<(NaiveDate, u64)> {
         let Some(data) = &self.repo_data else {
             return Vec::new();
         };
@@ -313,6 +338,36 @@ impl App {
                 (s.date, total)
             })
             .collect()
+    }
+
+    fn commits_chart_points(&self) -> Vec<(NaiveDate, u64)> {
+        let Some(data) = &self.repo_data else {
+            return Vec::new();
+        };
+        let mut running: u64 = 0;
+        data.commits_per_day
+            .iter()
+            .map(|(d, n)| {
+                running += u64::from(*n);
+                (*d, running)
+            })
+            .collect()
+    }
+
+    fn nav_rail(&self) -> Element<'_, Message> {
+        let header = text("Views")
+            .size(13)
+            .style(|t: &Theme| text::Style {
+                color: Some(t.extended_palette().background.strong.color),
+            });
+        column![
+            header,
+            Space::with_height(Length::Fixed(6.0)),
+            nav_button("Lines of code", ViewKind::Loc, self.view),
+            nav_button("Commits", ViewKind::Commits, self.view),
+        ]
+        .spacing(6)
+        .into()
     }
 
     fn latest_loc_per_extension(&self) -> BTreeMap<String, u64> {
@@ -392,6 +447,17 @@ fn accent_button(theme: &Theme, status: button::Status) -> button::Style {
         },
         shadow: Shadow::default(),
     }
+}
+
+fn nav_button(label: &str, kind: ViewKind, current: ViewKind) -> Element<'_, Message> {
+    let active = kind == current;
+    let style = if active { accent_button } else { subtle_button };
+    button(text(label.to_string()).size(13))
+        .padding([8, 12])
+        .width(Length::Fill)
+        .on_press(Message::ViewSelected(kind))
+        .style(style)
+        .into()
 }
 
 fn subtle_button(theme: &Theme, status: button::Status) -> button::Style {
